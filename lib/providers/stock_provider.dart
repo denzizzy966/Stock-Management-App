@@ -149,6 +149,14 @@ class StockProvider with ChangeNotifier {
     }
   }
 
+  Future<StockItem?> findItemByBarcode(String barcode) async {
+    try {
+      return findByBarcode(barcode);
+    } catch (e) {
+      return null;
+    }
+  }
+
   List<StockHistory> getStockHistory([String? warehouseId]) {
     if (warehouseId == null) {
       return List.unmodifiable(_history);

@@ -1,236 +1,276 @@
-import 'package:flutter/material.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:provider/provider.dart';
-import '../providers/stock_provider.dart';
-import '../providers/warehouse_provider.dart';
+import 'package:flutter/foundation.dart';
 import '../models/stock_item.dart';
-import '../widgets/stock_update_dialog.dart'; // Import StockUpdateDialog
+import '../models/stock_history.dart';
+import '../services/database_helper.dart';
 
-class QRScanScreen extends StatefulWidget {
-  const QRScanScreen({super.key});
+class StockProvider with ChangeNotifier {
+  final List<StockItem> _items = [];
+  final List<StockHistory> _history = [];
+  final DatabaseHelper _db = DatabaseHelper.instance;
 
-  @override
-  State<QRScanScreen> createState() => _QRScanScreenState();
-}
+  List<StockItem> get items => List.unmodifiable(_items);
+  List<StockHistory> get history => List.unmodifiable(_history);
 
-class _QRScanScreenState extends State<QRScanScreen> with WidgetsBindingObserver {
-  MobileScannerController? cameraController;
-  bool isStarted = true;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _initializeCamera();
+  StockProvider() {
+    _loadItems();
+    _loadHistory();
   }
 
-  void _initializeCamera() {
-    if (cameraController == null) {
-      setState(() {
-        cameraController = MobileScannerController(
-          detectionSpeed: DetectionSpeed.normal,
-          facing: CameraFacing.back,
-          torchEnabled: false,
-        );
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    cameraController?.dispose();
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    switch (state) {
-      case AppLifecycleState.resumed:
-        _initializeCamera();
-        break;
-      case AppLifecycleState.inactive:
-      case AppLifecycleState.paused:
-      case AppLifecycleState.detached:
-        cameraController?.dispose();
-        cameraController = null;
-        break;
-      default:
-        break;
-    }
-  }
-
-  Future<void> _handleDetection(BarcodeCapture capture) async {
-    if (!mounted) return;
-    
-    final List<Barcode> barcodes = capture.barcodes;
-    if (barcodes.isEmpty) return;
-
-    final Barcode barcode = barcodes.first;
-    final String? rawValue = barcode.rawValue;
-    if (rawValue == null) return;
-
+  Future<void> _loadItems() async {
     try {
-      // Get StockProvider before async operation
-      final stockProvider = Provider.of<StockProvider>(context, listen: false);
-      final item = stockProvider.findByBarcode(rawValue);
-      
-      if (!mounted) return;
-      
-      if (item == null) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Item not found'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return;
-      }
-      
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        builder: (context) => StockUpdateDialog(item: item),
-      );
+      final items = await _db.getStockItems();
+      _items.clear();
+      _items.addAll(items);
+      notifyListeners();
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      print('Error loading items: $e');
+      rethrow;
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Scan QR Code'),
-        actions: [
-          IconButton(
-            icon: ValueListenableBuilder(
-              valueListenable: cameraController?.torchState ?? ValueNotifier(TorchState.off),
-              builder: (context, state, child) {
-                if (state == TorchState.off) {
-                  return const Icon(Icons.flash_off, color: Colors.grey);
-                } else {
-                  return const Icon(Icons.flash_on, color: Colors.yellow);
-                }
-              },
-            ),
-            onPressed: () => cameraController?.toggleTorch(),
-          ),
-          IconButton(
-            icon: ValueListenableBuilder(
-              valueListenable: cameraController?.cameraFacingState ?? ValueNotifier(CameraFacing.back),
-              builder: (context, state, child) {
-                if (state == CameraFacing.front) {
-                  return const Icon(Icons.camera_front);
-                } else {
-                  return const Icon(Icons.camera_rear);
-                }
-              },
-            ),
-            onPressed: () => cameraController?.switchCamera(),
-          ),
-        ],
-      ),
-      body: Stack(
-        children: [
-          MobileScanner(
-            controller: cameraController,
-            onDetect: _handleDetection,
-          ),
-          const CustomPaint(
-            painter: ScannerOverlay(),
-            size: Size.infinite,
-            child: SizedBox.expand(),
-          ),
-          const Align(
-            alignment: Alignment.center,
-            child: ScanningLine(),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class ScannerOverlay extends CustomPainter {
-  const ScannerOverlay();
-
-  static const double _borderWidth = 10;
-  static const double _cornerRadius = 10;
-  static const Color _borderColor = Colors.blue;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    const double scanAreaWidth = 200;
-    const double scanAreaHeight = 200;
-
-    final paint = Paint()
-      ..color = Colors.black54
-      ..style = PaintingStyle.fill;
-
-    canvas.drawPath(
-      Path.combine(
-        PathOperation.difference,
-        Path()..addRect(Rect.fromLTWH(0, 0, size.width, size.height)),
-        Path()
-          ..addRRect(
-            RRect.fromRectAndRadius(
-              Rect.fromCenter(
-                center: Offset(size.width / 2, size.height / 2),
-                width: scanAreaWidth,
-                height: scanAreaHeight,
-              ),
-              const Radius.circular(_cornerRadius),
-            ),
-          ),
-      ),
-      paint,
-    );
-
-    final borderPaint = Paint()
-      ..color = _borderColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = _borderWidth;
-
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromCenter(
-          center: Offset(size.width / 2, size.height / 2),
-          width: scanAreaWidth,
-          height: scanAreaHeight,
-        ),
-        const Radius.circular(_cornerRadius),
-      ),
-      borderPaint,
-    );
+  Future<void> _loadHistory() async {
+    try {
+      final history = await _db.getStockHistory();
+      _history.clear();
+      _history.addAll(history);
+      notifyListeners();
+    } catch (e) {
+      print('Error loading history: $e');
+      rethrow;
+    }
   }
 
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
+  Future<void> addItem(StockItem item) async {
+    try {
+      // First insert the stock item
+      await _db.insertStockItem(item);
+      
+      // Get the item with generated ID
+      final items = await _db.getStockItems();
+      final newItem = items.firstWhere(
+        (i) => i.barcode == item.barcode && i.warehouseId == item.warehouseId,
+        orElse: () => throw Exception('Failed to retrieve inserted item'),
+      );
+      
+      _items.add(newItem);
 
-class ScanningLine extends StatelessWidget {
-  const ScanningLine({super.key});
+      // Add to history
+      final historyEntry = StockHistory(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        itemId: newItem.id!, // Now we can safely use the ID
+        itemName: newItem.name,
+        warehouseId: newItem.warehouseId,
+        warehouseName: newItem.warehouseName,
+        quantityChange: newItem.quantity,
+        newQuantity: newItem.quantity,
+        type: 'addition',
+        notes: 'Initial stock',
+        timestamp: DateTime.now(),
+      );
+      
+      await _db.insertStockHistory(historyEntry);
+      _history.add(historyEntry);
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 2,
-      width: 200,
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-          colors: [Colors.transparent, Colors.blue, Colors.transparent],
-        ),
-      ),
+      notifyListeners();
+    } catch (e) {
+      print('Error adding item: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> updateItem(StockItem item) async {
+    try {
+      final index = _items.indexWhere((i) => i.id == item.id);
+      if (index != -1) {
+        await _db.updateStockItem(item);
+        _items[index] = item;
+        notifyListeners();
+      }
+    } catch (e) {
+      print('Error updating item: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> deleteItem(String id) async {
+    try {
+      await _db.deleteStockItem(id);
+      _items.removeWhere((item) => item.id == id);
+      notifyListeners();
+    } catch (e) {
+      print('Error deleting item: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> updateStock(String id, int newQuantity) async {
+    try {
+      final index = _items.indexWhere((item) => item.id == id);
+      if (index != -1) {
+        final item = _items[index];
+        final quantityChange = newQuantity - item.quantity;
+        final updatedItem = item.copyWith(
+          quantity: newQuantity,
+          lastUpdated: DateTime.now(),
+        );
+
+        await _db.updateStockItem(updatedItem);
+        _items[index] = updatedItem;
+
+        // Add to history
+        final historyEntry = StockHistory(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          itemId: id,
+          itemName: item.name,
+          warehouseId: item.warehouseId,
+          warehouseName: item.warehouseName,
+          quantityChange: quantityChange,
+          newQuantity: newQuantity,
+          type: quantityChange > 0 ? 'addition' : 'removal',
+          notes: 'Stock update',
+          timestamp: DateTime.now(),
+        );
+        await _db.insertStockHistory(historyEntry);
+        _history.add(historyEntry);
+
+        notifyListeners();
+      }
+    } catch (e) {
+      print('Error updating stock: $e');
+      rethrow;
+    }
+  }
+
+  StockItem? findByBarcode(String barcode) {
+    try {
+      return _items.firstWhere((item) => item.barcode == barcode);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  Future<StockItem?> findItemByBarcode(String barcode) async {
+    try {
+      return _items.firstWhere((item) => item.barcode == barcode);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  List<StockHistory> getStockHistory([String? warehouseId]) {
+    if (warehouseId == null) {
+      return List.unmodifiable(_history);
+    }
+    return List.unmodifiable(
+      _history.where((h) => h.warehouseId == warehouseId).toList(),
     );
+  }
+
+  List<StockHistory> getRecentHistory(int limit) {
+    final sortedHistory = List<StockHistory>.from(_history)
+      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    return List.unmodifiable(
+      sortedHistory.take(limit).toList(),
+    );
+  }
+
+  List<StockItem> getWarehouseItems(String warehouseId) {
+    return List.unmodifiable(
+      _items.where((item) => item.warehouseId == warehouseId).toList(),
+    );
+  }
+
+  double getTotalValue() {
+    return _items.fold<double>(
+      0,
+      (sum, item) => sum + (item.price * item.quantity),
+    );
+  }
+
+  List<StockItem> getLowStockItems() {
+    return List.unmodifiable(
+      _items.where((item) => item.quantity <= item.minStockLevel).toList(),
+    );
+  }
+
+  Future<StockItem?> getItemById(String id) async {
+    try {
+      return _items.firstWhere((item) => item.id == id);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  Future<void> addStock(String itemId, String warehouseId, int quantity, {String? notes}) async {
+    try {
+      final index = _items.indexWhere((item) => item.id == itemId);
+      if (index != -1) {
+        final item = _items[index];
+        final newQuantity = item.quantity + quantity;
+        final updatedItem = item.copyWith(quantity: newQuantity);
+        
+        await _db.updateStockItem(updatedItem);
+        _items[index] = updatedItem;
+
+        // Add to history
+        final historyEntry = StockHistory(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          itemId: itemId,
+          itemName: item.name,
+          warehouseId: warehouseId,
+          warehouseName: item.warehouseName,
+          quantityChange: quantity,
+          newQuantity: newQuantity,
+          type: 'addition',
+          notes: notes ?? 'Stock added via QR scan',
+          timestamp: DateTime.now(),
+        );
+        await _db.insertStockHistory(historyEntry);
+        _history.add(historyEntry);
+
+        notifyListeners();
+      }
+    } catch (e) {
+      print('Error adding stock: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> removeStock(String itemId, String warehouseId, int quantity, {String? notes}) async {
+    try {
+      final index = _items.indexWhere((item) => item.id == itemId);
+      if (index != -1) {
+        final item = _items[index];
+        final newQuantity = item.quantity - quantity;
+        if (newQuantity < 0) {
+          throw Exception('Insufficient stock');
+        }
+        
+        final updatedItem = item.copyWith(quantity: newQuantity);
+        await _db.updateStockItem(updatedItem);
+        _items[index] = updatedItem;
+
+        // Add to history
+        final historyEntry = StockHistory(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          itemId: itemId,
+          itemName: item.name,
+          warehouseId: warehouseId,
+          warehouseName: item.warehouseName,
+          quantityChange: -quantity,
+          newQuantity: newQuantity,
+          type: 'removal',
+          notes: notes ?? 'Stock removed via QR scan',
+          timestamp: DateTime.now(),
+        );
+        await _db.insertStockHistory(historyEntry);
+        _history.add(historyEntry);
+
+        notifyListeners();
+      }
+    } catch (e) {
+      print('Error removing stock: $e');
+      rethrow;
+    }
   }
 }

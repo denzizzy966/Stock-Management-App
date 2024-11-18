@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'providers/stock_provider.dart';
 import 'providers/warehouse_provider.dart';
 import 'screens/home_screen.dart';
+import 'utils/route_observer.dart';
 
 void main() {
   runApp(const MyApp());
@@ -24,6 +25,7 @@ class MyApp extends StatelessWidget {
           colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
           useMaterial3: true,
         ),
+        navigatorObservers: [routeObserver],
         home: const HomeScreen(),
       ),
     );

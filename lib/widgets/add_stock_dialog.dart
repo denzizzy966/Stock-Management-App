@@ -20,6 +20,7 @@ class _AddStockDialogState extends State<AddStockDialog> {
   late TextEditingController _quantityController;
   late TextEditingController _priceController;
   late TextEditingController _minStockController;
+  late TextEditingController _warehouseController;
 
   @override
   void initState() {
@@ -32,6 +33,8 @@ class _AddStockDialogState extends State<AddStockDialog> {
         text: widget.item?.price.toString());
     _minStockController = TextEditingController(
         text: widget.item?.minStockLevel.toString());
+    _warehouseController = TextEditingController(
+        text: widget.item?.warehouseName);
   }
 
   @override
@@ -41,6 +44,7 @@ class _AddStockDialogState extends State<AddStockDialog> {
     _quantityController.dispose();
     _priceController.dispose();
     _minStockController.dispose();
+    _warehouseController.dispose();
     super.dispose();
   }
 
@@ -71,15 +75,20 @@ class _AddStockDialogState extends State<AddStockDialog> {
                   suffixIcon: IconButton(
                     icon: const Icon(Icons.qr_code_scanner),
                     onPressed: () async {
+                      // Push to scanner screen with flag indicating it's from add_stock_dialog
                       final result = await Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (context) => const ScannerScreen(),
+                          settings: const RouteSettings(arguments: true), // true indicates from add_stock_dialog
                         ),
                       );
+                      
+                      // Update barcode if result is not null and widget is still mounted
                       if (result != null && mounted) {
-                        _barcodeController.text = result;
-                        setState(() {});
+                        setState(() {
+                          _barcodeController.text = result;
+                        });
                       }
                     },
                   ),
@@ -133,6 +142,16 @@ class _AddStockDialogState extends State<AddStockDialog> {
                   return null;
                 },
               ),
+              TextFormField(
+                controller: _warehouseController,
+                decoration: const InputDecoration(labelText: 'Warehouse'),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter a warehouse';
+                  }
+                  return null;
+                },
+              ),
             ],
           ),
         ),
@@ -150,9 +169,9 @@ class _AddStockDialogState extends State<AddStockDialog> {
               final stockProvider =
                   Provider.of<StockProvider>(currentContext, listen: false);
 
-              // Get the current warehouse information (you might want to get this from a provider or user selection)
-              const warehouseId = "WH001"; // Default warehouse ID as String
-              const warehouseName = "Main Warehouse"; // Default warehouse name
+              // Get the current warehouse information from the input field
+              final warehouseName = _warehouseController.text;
+              final warehouseId = warehouseName.replaceAll(' ', '_').toUpperCase(); // Generate simple ID from name
 
               final item = StockItem(
                 id: widget.item?.id,

@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../providers/stock_provider.dart';
-import '../providers/warehouse_provider.dart';
 import 'dashboard_screen.dart';
 import 'warehouse_screen.dart';
 import 'stock_history_screen.dart';
 import 'stock_list_screen.dart';
-import 'qr_scan_screen.dart';
+import 'scanner_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -33,7 +30,7 @@ class _HomeScreenState extends State<HomeScreen> {
     const DashboardScreen(),
     const StockListScreen(),
     const WarehouseScreen(),
-    const QRScanScreen(),
+    const ScannerScreen(),
     const StockHistoryScreen(),
   ];
 
