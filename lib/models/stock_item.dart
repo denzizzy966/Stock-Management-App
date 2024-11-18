@@ -37,7 +37,7 @@ class StockItem {
 
   factory StockItem.fromMap(Map<String, dynamic> map) {
     return StockItem(
-      id: map['id'],
+      id: map['id']?.toString(),
       name: map['name'],
       barcode: map['barcode'],
       quantity: map['quantity'],

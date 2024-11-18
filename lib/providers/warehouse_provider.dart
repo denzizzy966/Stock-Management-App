@@ -26,8 +26,18 @@ class WarehouseProvider with ChangeNotifier {
 
   Future<void> addWarehouse(Warehouse warehouse) async {
     try {
-      final id = await _db.insertWarehouse(warehouse);
-      final newWarehouse = warehouse.copyWith(id: id);
+      // First insert the warehouse
+      await _db.insertWarehouse(warehouse);
+      
+      // Fetch the updated list to get the warehouse with the generated ID
+      final warehouses = await _db.getWarehouses();
+      final newWarehouse = warehouses.firstWhere(
+        (w) => w.name == warehouse.name && 
+              w.location == warehouse.location && 
+              w.description == warehouse.description,
+        orElse: () => throw Exception('Failed to retrieve inserted warehouse'),
+      );
+      
       _warehouses.add(newWarehouse);
       notifyListeners();
     } catch (e) {

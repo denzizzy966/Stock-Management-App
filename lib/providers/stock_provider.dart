@@ -42,23 +42,32 @@ class StockProvider with ChangeNotifier {
 
   Future<void> addItem(StockItem item) async {
     try {
-      final id = await _db.insertStockItem(item);
-      final newItem = item.copyWith(id: id);
+      // First insert the stock item
+      await _db.insertStockItem(item);
+      
+      // Get the item with generated ID
+      final items = await _db.getStockItems();
+      final newItem = items.firstWhere(
+        (i) => i.barcode == item.barcode && i.warehouseId == item.warehouseId,
+        orElse: () => throw Exception('Failed to retrieve inserted item'),
+      );
+      
       _items.add(newItem);
 
       // Add to history
       final historyEntry = StockHistory(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
-        itemId: id,
-        itemName: item.name,
-        warehouseId: item.warehouseId,
-        warehouseName: item.warehouseName,
-        quantityChange: item.quantity,
-        newQuantity: item.quantity,
+        itemId: newItem.id!, // Now we can safely use the ID
+        itemName: newItem.name,
+        warehouseId: newItem.warehouseId,
+        warehouseName: newItem.warehouseName,
+        quantityChange: newItem.quantity,
+        newQuantity: newItem.quantity,
         type: 'addition',
         notes: 'Initial stock',
         timestamp: DateTime.now(),
       );
+      
       await _db.insertStockHistory(historyEntry);
       _history.add(historyEntry);
 
